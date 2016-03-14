@@ -687,25 +687,17 @@ function google($q, $http, $cordovaOauthUtility) {
 
       if($cordovaOauthUtility.isInAppBrowserInstalled()) {
 
-        var redirect_uri = "http://localhost/callback",
-            clear_cache = 'no',
-            clear_session = 'no',
-            approval_prompt = 'auto';
+        var redirect_uri, clear_cache, clear_session, approval_prompt, prompt, login_hint;
 
-        if(options !== undefined) {
-          if(options.hasOwnProperty("redirect_uri")) {
-            redirect_uri = options.redirect_uri;
-          }
-          if(options.hasOwnProperty("clear_cache")) {
-              clear_cache = options.clear_cache === true ? 'yes' : 'no';
-          }
-          if(options.hasOwnProperty("clear_session")) {
-              clear_session = options.clear_session === true ? 'yes' : 'no';
-          }
-          if(options.hasOwnProperty("approval_prompt")) {
-              approval_prompt = options.approval_prompt === true ? 'force' : 'auto';
-          }
-        }
+        options = options || {};
+
+        redirect_uri    = options.redirect_uri || "http://localhost/callback";
+        clear_cache     = options.clear_cache === true ? 'yes' : 'no';
+        clear_session   = options.clear_session === true ? 'yes' : 'no';
+        approval_prompt = options.approval_prompt === true ? 'force' : 'auto';
+        prompt          = options.prompt === true ? 'select_account' : 'consent select_account';
+        login_hint      = options.login_hint || '';
+
 
         var browserRef = window.cordova.InAppBrowser.open(
                 'https://accounts.google.com/o/oauth2/auth?client_id=' + clientId
@@ -713,7 +705,11 @@ function google($q, $http, $cordovaOauthUtility) {
                 + '&scope=' + appScope.join(" ")
                 + '&approval_prompt=' + approval_prompt
                 + '&response_type=token'
+                + '&prompt=' + prompt
+                + '&login_hint=' + login_hint
+
                 , '_blank'
+
                 , 'location=no,clearsessioncache=' + clear_session
                 + ',clearcache=' + clear_cache
         );
