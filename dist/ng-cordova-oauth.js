@@ -687,31 +687,49 @@ function google($q, $http, $cordovaOauthUtility) {
 
       if($cordovaOauthUtility.isInAppBrowserInstalled()) {
 
-        var redirect_uri, clear_cache, clear_session, approval_prompt, prompt, login_hint;
+        var redirect_uri = 'http://localhost/callback',
+            clear_cache = 'no',
+            clear_session = 'no',
+            prompt_options = [],
+            login_hint;
 
-        options = options || {};
+        if(options !== undefined) {
+            if (options.hasOwnProperty("redirect_uri")) {
+                redirect_uri = options.redirect_uri;
+            }
+            if (options.hasOwnProperty("clear_cache")) {
+                clear_cache = options.clear_cache === true ? 'yes' : 'no';
+            }
+            if (options.hasOwnProperty("clear_session")) {
+                clear_session = options.clear_session === true ? 'yes' : 'no';
+            }
+            if (options.hasOwnProperty("prompt")) {
+                if (options.prompt === true)  prompt_options.push('select_account');
+            }
+            if (options.hasOwnProperty("consent")) {
+                if (options.consent === true)  prompt_options.push('consent');
+            }
+            if (options.hasOwnProperty("login_hint")) {
+                login_hint = options.login_hint;
+            }
+        }
 
-        redirect_uri    = options.redirect_uri || "http://localhost/callback";
-        clear_cache     = options.clear_cache === true ? 'yes' : 'no';
-        clear_session   = options.clear_session === true ? 'yes' : 'no';
-        approval_prompt = options.approval_prompt === true ? 'force' : 'auto';
-        prompt          = options.prompt === true ? 'select_account' : 'consent select_account';
-        login_hint      = options.login_hint || '';
-
+        if (prompt_options.length===0) prompt_options.push('none');
 
         var browserRef = window.cordova.InAppBrowser.open(
-                'https://accounts.google.com/o/oauth2/auth?client_id=' + clientId
-                + '&redirect_uri=' + redirect_uri
-                + '&scope=' + appScope.join(" ")
-                + '&approval_prompt=' + approval_prompt
+                'https://accounts.google.com/o/oauth2/auth?'
+                + 'client_id='      + clientId
+                + '&redirect_uri='  + redirect_uri
+                + '&scope='         + appScope.join(" ")
                 + '&response_type=token'
-                + '&prompt=' + prompt
-                + '&login_hint=' + login_hint
+                + '&prompt='        + prompt_options.join(" ")
+                + '&login_hint='    + login_hint
 
                 , '_blank'
 
-                , 'location=no,clearsessioncache=' + clear_session
-                + ',clearcache=' + clear_cache
+                , 'location=no'
+                + ',clearsessioncache=' + clear_session
+                + ',clearcache='    + clear_cache
         );
 
         browserRef.addEventListener("loadstart", function(event) {
