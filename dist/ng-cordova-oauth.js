@@ -681,7 +681,17 @@ function google($q, $http, $cordovaOauthUtility) {
    */
   function oauthGoogle(clientId, appScope, options) {
 
-    var deferred = $q.defer();
+    var browserRef, deferred = $q.defer();
+
+    // ------------- local funcions ----------------
+    function cleanUp() {
+          if (browserRef) {
+              browserRef.removeEventListener("exit",function(event){});
+              browserRef.removeEventListener("loadstart",function(event){});
+              browserRef.removeEventListener("loadstop",function(event){});
+              browserRef.close();
+          }
+    }
 
     if(window.cordova) {
 
@@ -716,7 +726,7 @@ function google($q, $http, $cordovaOauthUtility) {
 
         if (prompt_options.length===0) prompt_options.push('none');
 
-        var browserRef = window.cordova.InAppBrowser.open(
+        browserRef = window.cordova.InAppBrowser.open(
                 'https://accounts.google.com/o/oauth2/auth?'
                 + 'client_id='      + clientId
                 + '&redirect_uri='  + redirect_uri
@@ -727,15 +737,18 @@ function google($q, $http, $cordovaOauthUtility) {
 
                 , '_blank'
 
-                , 'location=no'
+                , 'location=no,hidden=yes'
                 + ',clearsessioncache=' + clear_session
                 + ',clearcache='    + clear_cache
         );
 
+        //this hooks into browser new pages to test if the proccess of authentication have reached its end (loading redirect_uri)
+        //so that it can grab redirect_uri query string to capture token
+        //also, closes the browser in order to get back to app
         browserRef.addEventListener("loadstart", function(event) {
-          if((event.url).indexOf(redirect_uri) === 0) {
-            browserRef.removeEventListener("exit",function(event){});
-            browserRef.close();
+          if((event.url).indexOf(redirect_uri) === 0) {   //if new URL begins with redirect_uri
+            cleanUp();
+            //generates object from query string
             var callbackResponse = (event.url).split("#")[1];
             var responseParameters = (callbackResponse).split("&");
             var parameterMap = [];
@@ -748,6 +761,27 @@ function google($q, $http, $cordovaOauthUtility) {
               deferred.reject("Problem authenticating");
             }
           }
+        });
+
+        browserRef.addEventListener("loaderror", function(event) {
+          if((event.url).indexOf(redirect_uri) === 0) {
+            return; // nothing to do here, this error is expected. 'loadstart' event will treat it.
+          }
+          //something went wrong, so, let's cleanup
+          cleanUp();
+
+
+          deferred.reject("Problem authenticating (loaderror)");   //and get back to the app with an error
+          console.log("inAppBrowser loaderror => event: ", JSON.stringify(event) );
+
+
+        });
+        browserRef.addEventListener("loadstop", function(event) {
+
+            browserRef.show();   //just show the browser on first page loaded
+            //navigator.notification.activityStop();
+
+            browserRef.removeEventListener("loadstop",function(event){});  //remove itself
         });
 
         browserRef.addEventListener('exit', function(event) {
