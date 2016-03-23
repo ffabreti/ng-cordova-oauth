@@ -683,15 +683,78 @@ function google($q, $http, $cordovaOauthUtility) {
 
     var browserRef, deferred = $q.defer();
 
+
     // ------------- local funcions ----------------
     function cleanUp() {
-          if (browserRef) {
-              browserRef.removeEventListener("exit",function(event){});
-              browserRef.removeEventListener("loadstart",function(event){});
-              browserRef.removeEventListener("loadstop",function(event){});
-              browserRef.close();
-          }
+        if (browserRef) {
+            browserRef.removeEventListener("exit",      exitFn);
+            browserRef.removeEventListener("loadstart", loadstartFn);
+            browserRef.removeEventListener("loadstop",  loadstopFn);
+            browserRef.removeEventListener("loaderror",  loaderrorFn);
+            browserRef.close();
+        }
     }
+    /*
+        we need to declare functions used for events so that we can remove the listeners later
+        see: https://issues.apache.org/jira/browse/CB-4819
+    */
+
+    /*  loadstartFn()
+        this hooks into browser new pages to test if the proccess of authentication have reached its end (loading redirect_uri)
+        so that it can grab redirect_uri query string to capture token
+        also, closes the browser in order to get back to app
+    */
+    function loadstartFn(event) {
+        if((event.url).indexOf(redirect_uri) === 0) {   //if new URL begins with redirect_uri
+            cleanUp();
+            //generates object from query string
+            var callbackResponse = (event.url).split("#")[1];
+            var responseParameters = (callbackResponse).split("&");
+            var parameterMap = [];
+            for(var i = 0; i < responseParameters.length; i++) {
+                parameterMap[responseParameters[i].split("=")[0]] = responseParameters[i].split("=")[1];
+            }
+            if(parameterMap.access_token !== undefined && parameterMap.access_token !== null) {
+                deferred.resolve({ access_token: parameterMap.access_token, token_type: parameterMap.token_type, expires_in: parameterMap.expires_in });
+            } else {
+                deferred.reject("Problem authenticating");
+            }
+        }
+    }
+
+    /*  loadstopFn()
+        just show the browser on first page loaded and remove itself
+    */
+    function loadstopFn(event) {
+
+        browserRef.show();
+        browserRef.removeEventListener("loadstop", loadstopFn);
+
+    }
+    /*  loaderrorFn()
+        if something goes wrong, do the cleanup and get back to the app
+        rejects the promise
+    */
+    function loaderrorFn(event) {
+        if((event.url).indexOf(redirect_uri) === 0) {
+            return; // nothing to do here, this error is expected. 'loadstart' event will treat it.
+        }
+        //something went wrong, so, let's cleanup
+        cleanUp();
+
+        deferred.reject("Problem authenticating (loaderror)");   //and get back to the app with an error
+        console.log("inAppBrowser loaderror => event: ", JSON.stringify(event) );
+
+    }
+    /*  exitFn()
+        User cancelled browser
+        rejects promise
+    */
+    function exitFn() {
+        deferred.reject("The sign in flow was canceled");
+    }
+
+    // ------------- end of local funcions ----------------
 
     if(window.cordova) {
 
@@ -727,66 +790,27 @@ function google($q, $http, $cordovaOauthUtility) {
         if (prompt_options.length===0) prompt_options.push('none');
 
         browserRef = window.cordova.InAppBrowser.open(
-                'https://accounts.google.com/o/oauth2/auth?'
-                + 'client_id='      + clientId
-                + '&redirect_uri='  + redirect_uri
-                + '&scope='         + appScope.join(" ")
+                'https://accounts.google.com/o/oauth2/auth?client_id=' + clientId
+                + '&redirect_uri=' + redirect_uri
+                + '&scope=' + appScope.join(" ")
+                //+ '&approval_prompt=' + approval_prompt
                 + '&response_type=token'
-                + '&prompt='        + prompt_options.join(" ")
-                + '&login_hint='    + login_hint
+                + '&prompt=' + prompt_options.join(" ")
+                + '&login_hint=' + login_hint
 
                 , '_blank'
 
-                , 'location=no,hidden=yes'
-                + ',clearsessioncache=' + clear_session
-                + ',clearcache='    + clear_cache
+                , 'location=no,hidden=yes,'
+                + 'clearsessioncache=' + clear_session
+                + ',clearcache=' + clear_cache
         );
 
-        //this hooks into browser new pages to test if the proccess of authentication have reached its end (loading redirect_uri)
-        //so that it can grab redirect_uri query string to capture token
-        //also, closes the browser in order to get back to app
-        browserRef.addEventListener("loadstart", function(event) {
-          if((event.url).indexOf(redirect_uri) === 0) {   //if new URL begins with redirect_uri
-            cleanUp();
-            //generates object from query string
-            var callbackResponse = (event.url).split("#")[1];
-            var responseParameters = (callbackResponse).split("&");
-            var parameterMap = [];
-            for(var i = 0; i < responseParameters.length; i++) {
-              parameterMap[responseParameters[i].split("=")[0]] = responseParameters[i].split("=")[1];
-            }
-            if(parameterMap.access_token !== undefined && parameterMap.access_token !== null) {
-              deferred.resolve({ access_token: parameterMap.access_token, token_type: parameterMap.token_type, expires_in: parameterMap.expires_in });
-            } else {
-              deferred.reject("Problem authenticating");
-            }
-          }
-        });
 
-        browserRef.addEventListener("loaderror", function(event) {
-          if((event.url).indexOf(redirect_uri) === 0) {
-            return; // nothing to do here, this error is expected. 'loadstart' event will treat it.
-          }
-          //something went wrong, so, let's cleanup
-          cleanUp();
-
-
-          deferred.reject("Problem authenticating (loaderror)");   //and get back to the app with an error
-          console.log("inAppBrowser loaderror => event: ", JSON.stringify(event) );
-
-
-        });
-        browserRef.addEventListener("loadstop", function(event) {
-
-            browserRef.show();   //just show the browser on first page loaded
-            //navigator.notification.activityStop();
-
-            browserRef.removeEventListener("loadstop",function(event){});  //remove itself
-        });
-
-        browserRef.addEventListener('exit', function(event) {
-          deferred.reject("The sign in flow was canceled");
-        });
+        //setup listeners
+        browserRef.addEventListener("loadstart", loadstartFn);
+        browserRef.addEventListener("loaderror", loaderrorFn);
+        browserRef.addEventListener("loadstop",  loadstopFn);
+        browserRef.addEventListener('exit',      exitFn);
 
       } else {
         deferred.reject("Could not find InAppBrowser plugin");
